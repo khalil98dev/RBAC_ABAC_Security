@@ -24,34 +24,29 @@ internal class Program
 
         List<FieldPermission> fieldPermisions = []; 
 
+
         foreach (var res in resources)
         {
             Console.WriteLine($"Resource: {res.Name}");
-
-            var per = new ResourcePermission(res.Name);
-            resPermisions.Add(per);
-
+            Console.WriteLine($"permissions Actions: {security.GetResourceActions(res)}");
+            Console.WriteLine("Secured Fields: ");  
             foreach (var field in security.GetSecuredFields(res))
             {
-                var perm = new FieldPermission(res.Name,field);
-
-                perm.Allow(FieldsActions.Read);
-
-                fieldPermisions.Add(perm);
+                Console.WriteLine($"Feild {field.Key} : Allowed Actions: [{string.Join(',',field.Value)}]");
+                          
             }
             
         }
+
         resPermisions.ForEach(p => role.AddResourcePermission(p));
-        fieldPermisions.ForEach(p => role.AddFieldPermission(p));
+        //fieldPermisions.ForEach(p => role.AddFieldPermission(p));
 
 
 
 
         Console.ReadLine();
         
-        
-        
-        
+       
     }
 }
 
@@ -70,33 +65,105 @@ public enum ResourceActions
 
 public sealed class ResourcePermission
 {
-    public string Resource { get; }
+    private readonly List<FieldPermission> _fieldPermissions = [];
+    public Guid RoleId { get; private set; }
+    public Guid ResourcePermissionId { get; private set; }
+    public string Resource { get; private set; }
     public ResourceActions AllowedActions { get; private set; }
 
-    public ResourcePermission(string resource)
+    public IReadOnlyCollection<FieldPermission> FieldPermissions =>
+        _fieldPermissions.AsReadOnly();
+
+
+    private ResourcePermission()
     {
-        Resource = resource;
+       //for ef core
+    }
+
+
+    public ResourcePermission(Guid roleId,string resource)
+    {
+        if (roleId == Guid.Empty)
+            throw new ArgumentException("Role ID cannot be empty.", nameof(roleId));
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(resource);
+        ResourcePermissionId = Guid.CreateVersion7();
+        RoleId = roleId;
+        Resource = resource.Trim();
         AllowedActions = ResourceActions.None;
     }
 
     public void Allow(params ResourceActions[] actions)
     {
+        ArgumentNullException.ThrowIfNull(actions);
+
         foreach (var action in actions)
         {
             if (action == ResourceActions.None ||
                 (action & ~ResourceActions.All) != 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(actions));
+                throw new ArgumentOutOfRangeException(
+                    nameof(actions), action, "Invalid resource action.");
             }
 
             AllowedActions |= action;
         }
     }
 
-    public bool Allows(ResourceActions action) =>
-        action != ResourceActions.None &&
-        (action & ~ResourceActions.All) == 0 &&
-        (AllowedActions & action) == action;
+    public bool Allows(ResourceActions action)
+    {
+        return action != ResourceActions.None &&
+                (action & ~ResourceActions.All) == 0 &&
+                (AllowedActions & action) == action;
+    } 
+
+    public FieldPermission AddFieldPermission(string field)
+    {
+        if (_fieldPermissions.Any(x => x.Field == field))
+        {
+            throw new InvalidOperationException(
+                $"Field permission for '{field}' already exists.");
+        }
+
+        var permission = new FieldPermission(ResourcePermissionId, field);
+
+        _fieldPermissions.Add(permission);
+
+        return permission;
+    }
+
+    public bool RemoveFieldPermission(Guid resourceFieldId)
+    {
+        var permission = _fieldPermissions
+            .SingleOrDefault(x => x.ResourceFieldId == resourceFieldId);
+
+        return permission is not null &&
+               _fieldPermissions.Remove(permission);
+    }
+
+    public void Deny(params ResourceActions[] actions)
+    {
+        ArgumentNullException.ThrowIfNull(actions);
+
+        foreach (var action in actions)
+        {
+            if (action == ResourceActions.None ||
+                (action & ~ResourceActions.All) != 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(actions), action, "Invalid resource action.");
+            }
+
+            AllowedActions &= ~action;
+        }
+    }
+
+    public bool HasPermission(Guid resourceFieldId,FieldsActions action)
+    {
+       return  _fieldPermissions.Any(p => p.ResourceFieldId == resourceFieldId && p.Allows(action));
+    }
+            
+
 }
 
 [Flags]
@@ -111,53 +178,89 @@ public enum FieldsActions
 
 public sealed class FieldPermission
 {
-    public string Resource { get; }
-    public string Field { get; }
+    public Guid ResourcePermissionId { get; private set; }
+    public Guid ResourceFieldId { get; private set; }
+    public string Field { get; private set; }
+
     public FieldsActions AllowedActions { get; private set; }
 
-    public FieldPermission(string resource, string field)
+    private FieldPermission()
     {
-        Resource = resource;
-        Field = field;
+       //ef core
+    }
+
+    internal FieldPermission(Guid resourcePermissionId,string field)
+    {
+        if (resourcePermissionId == Guid.Empty)
+            throw new ArgumentException(
+                "Resource permission ID cannot be empty.",
+                nameof(resourcePermissionId));
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(field);
+        ResourceFieldId = Guid.CreateVersion7();
+        ResourcePermissionId = resourcePermissionId;
+        Field = field.Trim();
         AllowedActions = FieldsActions.None;
     }
 
     public void Allow(params FieldsActions[] actions)
     {
+        ArgumentNullException.ThrowIfNull(actions);
+
         foreach (var action in actions)
         {
             if (action == FieldsActions.None ||
                 (action & ~FieldsActions.All) != 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(actions));
+                throw new ArgumentOutOfRangeException(
+                    nameof(actions), action, "Invalid field action.");
             }
 
             AllowedActions |= action;
         }
     }
 
-    public bool Allows(FieldsActions action) =>
-        action != FieldsActions.None &&
-        (action & ~FieldsActions.All) == 0 &&
-        (AllowedActions & action) == action;
+    public void Deny(params FieldsActions[] actions)
+    {
+        ArgumentNullException.ThrowIfNull(actions);
+
+        foreach (var action in actions)
+        {
+            if (action == FieldsActions.None ||
+                (action & ~FieldsActions.All) != 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(actions), action, "Invalid field action.");
+            }
+
+            AllowedActions &= ~action;
+        }
+    }
+
+    public bool Allows(FieldsActions action) => action != FieldsActions.None &&
+                                                (action & ~FieldsActions.All) == 0 &&
+                                                (AllowedActions & action) == action;
 }
 
 public class Role
 {
     private HashSet<ResourcePermission> _resourcePermissions { get; set; } = [];
-    private HashSet<FieldPermission> _feildPermissions { get; set; } = [];
-
+    public Guid RoleId { get; set; }
     public string RoleName { get; set; }
     public string Description { get; set; }
+
+    public IReadOnlyCollection<ResourcePermission> ResourcePermissions
+       => _resourcePermissions.AsReadOnly();
+
+    private Role() { } // EF Core
 
 
     private Role(string RoleName, string Description)
     {
+        RoleId = Guid.CreateVersion7();
         this.RoleName = RoleName;
         this.Description = Description;
     }
-
-
 
     public static Role CreateRole(string RoleName, string Description)
     {
@@ -167,36 +270,45 @@ public class Role
 
     public void AddResourcePermission(ResourcePermission permission)
     {
+        ArgumentNullException.ThrowIfNull(permission);
+
+        if (_resourcePermissions.Any(p => p.ResourcePermissionId == permission.ResourcePermissionId))
+        {
+            throw new InvalidOperationException($"A permission for resource '{permission.Resource}' already exists.");
+        }
+
+        if (permission.RoleId != RoleId)
+        {
+            throw new InvalidOperationException("The resource permission belongs to a different role.");
+        }
+
         _resourcePermissions.Add(permission);
     }
 
-    public void RemoveResourcePermission(ResourcePermission permission)
+    public bool RemoveResourcePermission(Guid resourceId)
     {
-        _resourcePermissions.Remove(permission);
+        var permission = _resourcePermissions.SingleOrDefault(p => p.ResourcePermissionId == resourceId);
+
+        return permission is not null && _resourcePermissions.Remove(permission);
     }
 
-    public void AddFieldPermission(FieldPermission permission)
-    {
-        _feildPermissions.Add(permission);
-    }
-
-    public void RemoveFieldPermission(FieldPermission permission)
-    {
-        _feildPermissions.Remove(permission);
-    }
-
-
-    public bool HasPermission(ResourcePermission permission)
-    {
-        return _resourcePermissions.Contains(permission);
-    }
-
-    public bool HasPermission(FieldPermission permission)
-    {
-        return _feildPermissions.Contains(permission);
-    }
-
+       
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 public class AggregateRoot : IAggregateRoot
@@ -254,21 +366,77 @@ public class Customer : AggregateRoot
 
 public sealed record OrderLines(int ItemId, Guid OrderId, decimal price, int qte, decimal totalPrice); 
 
-
 public sealed class SecurityRegistry
 {
-    private readonly Dictionary<Type, Dictionary<string, HashSet<FieldsActions>>>
-        _resources = [];
+    private readonly Dictionary<Type, ResourceActions> _resources = []; 
+    private readonly Dictionary<Type, Dictionary<string, HashSet<FieldsActions>>> _securedFields = [];
 
-    internal void Add(
-        Type resourceType,
-        string propertyName,
-        IEnumerable<FieldsActions> actions)
+    internal void AddResource(Type resourceType,IEnumerable<ResourceActions> actions)
     {
-        if (!_resources.TryGetValue(resourceType, out var fields))
+        ArgumentNullException.ThrowIfNull(resourceType);
+        ArgumentNullException.ThrowIfNull(actions);
+
+        var configuredActions = actions.ToArray();
+
+        if (configuredActions.Length == 0)
+        {
+            throw new ArgumentException(
+                "At least one resource action must be specified.",
+                nameof(actions));
+        }
+
+
+        foreach (var action in configuredActions)
+        {
+            if (action == ResourceActions.None ||
+                (action & ~ResourceActions.All) != 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(actions),
+                    action,
+                    "The resource action contains invalid flags.");
+            }
+        }
+
+        var combinedActions = configuredActions.Aggregate(ResourceActions.None,
+            (current,action)=> (current|action));
+
+        if (_resources.TryGetValue(resourceType, out var existing))
+        {
+            _resources[resourceType] = existing | combinedActions;
+        } else
+        {
+            _resources.Add(resourceType, combinedActions);
+        }
+    }
+
+    internal void Add(Type resourceType,string propertyName,IEnumerable<FieldsActions> actions)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType) ;
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        ArgumentNullException.ThrowIfNull(actions);
+
+
+        var configuredActions = actions.ToArray();
+
+        if (configuredActions.Length == 0)
+            throw new ArgumentException(
+               "At least one field action must be specified.",
+               nameof(actions));
+
+        
+        foreach(var action in configuredActions)
+        {
+            if(action == FieldsActions.None || (action & ~FieldsActions.All )!= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(action),action, "The field action contains invalid flags.");
+            }
+        }
+
+        if (!_securedFields.TryGetValue(resourceType, out var fields))
         {
             fields = [];
-            _resources[resourceType] = fields;
+            _securedFields[resourceType] = fields;
         }
 
         if (!fields.TryGetValue(propertyName, out var permissions))
@@ -280,23 +448,29 @@ public sealed class SecurityRegistry
         permissions.UnionWith(actions);
     }
 
-    public SecurityRegistry Configure<T>(
-       Action<ResourceSecurityBuilder<T>> configure)
-       where T : IAggregateRoot
+
+    public SecurityRegistry Configure<T>(Action<ResourceSecurityBuilder<T>> configure) where T : IAggregateRoot
     {
         configure(new ResourceSecurityBuilder<T>(this));
         return this;
-
     }
 
-    public IEnumerable<string> GetSecuredFields(Type resourceType)
+
+    public IReadOnlyDictionary<string,HashSet<FieldsActions>> GetSecuredFields(Type resourceType)
     {
-        return _resources.TryGetValue(resourceType, out var fields)
-            ? fields.Keys
-            : [];
+        return _securedFields.TryGetValue(resourceType, out var fields)
+            ? fields : [];
     }
-}
 
+    public ResourceActions GetResourceActions(Type resourceType)
+    {
+        ArgumentNullException.ThrowIfNull(resourceType);
+
+        return _resources.TryGetValue(resourceType, out var actions)
+            ? actions: ResourceActions.All;
+    }
+
+}
 
 public sealed class ResourceSecurityBuilder<T> where T : IAggregateRoot
 {
@@ -305,6 +479,17 @@ public sealed class ResourceSecurityBuilder<T> where T : IAggregateRoot
     internal ResourceSecurityBuilder(SecurityRegistry registry)
     {
         _registry = registry;
+    }
+
+
+    public ResourceSecurityBuilder<T> SecureResource(
+      params ResourceActions[] actions)
+    {
+        ArgumentNullException.ThrowIfNull(actions);
+
+        _registry.AddResource(typeof(T), actions);
+
+        return this;
     }
 
     public ResourceSecurityBuilder<T> SecureField<TValue>(
@@ -329,9 +514,9 @@ public sealed class ResourceSecurityBuilder<T> where T : IAggregateRoot
 
         return this;
     }
+
+
 }
-
-
 
 public interface IAggregateRoot
 {
@@ -348,11 +533,25 @@ public interface IResourceSecurityConfiguration<T>
 public sealed class OrderSecurityConfiguration: IResourceSecurityConfiguration<Order>
 {
     public void Configure(ResourceSecurityBuilder<Order> builder)
+
     {
-        builder.SecureField(o => o.TotalAmmount,FieldsActions.All);
+        builder.SecureResource(ResourceActions.Read,ResourceActions.Set);
+
+        builder.SecureField(o => o.TotalAmmount,[FieldsActions.Read,FieldsActions.Set]);
+
+        builder.SecureField(o=>o.CustomerId,FieldsActions.Read);
+
+        builder.SecureField(o => o.IssueDate, FieldsActions.Set);
     }
 }
 
+public sealed class CustomerSecurityConfigurations : IResourceSecurityConfiguration<Customer>
+{
+    public void Configure(ResourceSecurityBuilder<Customer> builder)
+    {
+        builder.SecureField(c=>c.AddressLine,FieldsActions.Read);
+    }
+}
 
 public static class SecurityConfigurationExtensions
 {
