@@ -1,8 +1,11 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using SecurityBuilder.Abstractions;
 using SecurityBuilder.Actions;
 using SecurityBuilder.AspNetCore;
+using SecurityBuilder.Common;
 using SecurityBuilder.EntityFrameworkCore;
 using SecurityBuilder.Tests.Aggregates;
 using SecurityBuilder.Tests.Infrastructure;
@@ -73,6 +76,82 @@ public class DependencyInjectionTests
 
         Assert.False(context.IsSystem);
         Assert.False(context.Access.Authorize<Order>(ResourceActions.Read).IsAllowed);
+    }
+
+    [Fact]
+    public void The_current_user_is_anonymous_outside_a_request()
+    {
+        using var provider = BuildProvider();
+        using var scope = provider.CreateScope();
+
+        var user = scope.ServiceProvider.GetRequiredService<ICurrentUser>();
+
+        Assert.False(user.IsAuthenticated);
+        Assert.Empty(user.Roles);
+    }
+
+    [Fact]
+    public void The_claim_types_can_be_configured()
+    {
+        var services = new ServiceCollection();
+
+        services.AddSecurityBuilder(
+            options => options.RoleClaimType = "roles",
+            typeof(TestSecurity).Assembly);
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Equal("roles",
+            provider.GetRequiredService<IOptions<SecurityBuilderOptions>>().Value.RoleClaimType);
+    }
+
+    [Fact]
+    public void The_role_store_is_registered_behind_the_cache_it_can_invalidate()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        using var provider = BuildProvider(services =>
+        {
+            services.AddDbContext<AppDbContext>((serviceProvider, options) => options
+                .UseSqlite(connection)
+                .UseSecurity(serviceProvider));
+
+            services.AddRolePermissionStore<AppDbContext>();
+        });
+
+        using var scope = provider.CreateScope();
+
+        Assert.IsType<CachedRolePermissionStore>(
+            scope.ServiceProvider.GetRequiredService<IRolePermissionStore>());
+
+        // Singleton: one admin's invalidation has to reach every other scope.
+        Assert.Same(
+            provider.GetRequiredService<IRolePermissionCache>(),
+            scope.ServiceProvider.GetRequiredService<IRolePermissionCache>());
+    }
+
+    [Fact]
+    public void A_zero_cache_duration_reads_the_permissions_every_time()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        using var provider = BuildProvider(services =>
+        {
+            services.AddDbContext<AppDbContext>((serviceProvider, options) => options
+                .UseSqlite(connection)
+                .UseSecurity(serviceProvider));
+
+            services.AddRolePermissionStore<AppDbContext>(TimeSpan.Zero);
+        });
+
+        using var scope = provider.CreateScope();
+
+        Assert.IsType<RolePermissionStore<AppDbContext>>(
+            scope.ServiceProvider.GetRequiredService<IRolePermissionStore>());
+
+        Assert.Null(provider.GetService<IRolePermissionCache>());
     }
 
     [Fact]

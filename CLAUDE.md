@@ -4,7 +4,7 @@ A reusable library for role-based access control on resources (aggregates) plus 
 control. It will be reused in future projects, so the code must stay clean, simple and human-readable.
 
 Current shape: a .NET 10 solution, `SecurityBuilder.slnx`, with the core library, the EF Core
-integration, the ASP.NET Core integration, and 78 xUnit tests. `dotnet test` must stay green and the
+integration, the ASP.NET Core integration, and 99 xUnit tests. `dotnet test` must stay green and the
 build must stay warning-free.
 
 ## Layout
@@ -13,12 +13,11 @@ build must stay warning-free.
 | --- | --- |
 | `src/SecurityBuilder` | The core. **No dependencies at all**: no EF Core, no ASP.NET Core. |
 | `src/SecurityBuilder.EntityFrameworkCore` | `Microsoft.EntityFrameworkCore` + `Microsoft.EntityFrameworkCore.Relational`, no provider. |
-| `src/SecurityBuilder.AspNetCore` | DI and the 403 mapping. References the core only, not EF. |
+| `src/SecurityBuilder.AspNetCore` | DI, the sign-in middleware, `ICurrentUser` and the 403 mapping. References the core only, not EF. |
 | `tests/SecurityBuilder.Tests` | xUnit, SQLite. Owns the demo domain the tests run against. |
 
-Still to come: `samples/SecurityBuilder.Sample.Api` (Step 5), and the authentication middleware
-that signs the current user in (Step 5), which is why `SecurityBuilder.AspNetCore` holds no
-middleware yet.
+Still to come: `src/SecurityBuilder.Identity` (the opt-in users package, decided in Step 5), the JWT
+implementation of `ISecurityTokenService`, and `samples/SecurityBuilder.Sample.Api`.
 
 ## Pieces
 
@@ -38,10 +37,16 @@ middleware yet.
 | EF: `SecurityModelBuilderExtensions.cs` | `modelBuilder.ApplySecurityModel()`: maps Role/ResourcePermission/FieldPermission, flags as int. |
 | EF: `SecurityDbContextOptionsExtensions.cs` | `UseSecurity(serviceProvider)` for DI and `UseSecurity(securityContext)` for tests and jobs; wires all of the above. |
 | ASP: `SecurityBuilderServiceCollectionExtensions.cs` | `AddSecurityBuilder(params Assembly[])`: registry built, frozen and registered as a singleton; `SecurityContext` scoped; the 403 handler registered. |
+| `Abstractions/ICurrentUser.cs`, `StaticCurrentUser.cs` | Who the caller is (identity), separate from `SecurityContext` (authorization). `StaticCurrentUser.Anonymous`/`.System` for jobs and seeding. |
+| `Abstractions/IRolePermissionStore.cs`, `IRolePermissionCache.cs` | Role names => roles with permissions; invalidation an admin calls after editing a role. |
+| `Common/RolePermissionCache.cs`, `CachedRolePermissionStore.cs` | Dictionary cache (default 5 min) and the decorator that asks the real store only for the names it is missing. A cached `Role` is shared, so treat it as read-only. |
+| EF: `RolePermissionStore.cs` | Reads roles `AsNoTracking`, matched on `ToUpper()` rather than trusting the provider's collation; `AddRolePermissionStore<TContext>(cacheDuration?)` wires it behind the cache (`TimeSpan.Zero` = no cache). |
+| ASP: `SecuritySignInMiddleware.cs` | `UseSecurityBuilder()`, placed after `UseAuthentication`: role claims => permissions => `SignIn`. Unauthenticated stays anonymous. |
+| ASP: `SecurityBuilderOptions.cs`, `HttpContextCurrentUser.cs` | The claim types to read (role, id, name, email); `ICurrentUser` over `IHttpContextAccessor`, anonymous when there is no request. |
 | ASP: `AccessDeniedExceptionHandler.cs` | `AccessDeniedException` => 403 ProblemDetails with `deniedFields`. Needs `app.UseExceptionHandler()`. |
 
 Tests keep the original scenario ids in comments: V1-V10 grant validation, E1-E19 evaluation,
-W1-W12 writes, Q1-Q24 reads, plus the `ApplySecurityModel` round trip.
+W1-W12 writes, Q1-Q24 reads, A1-A17 sign-in and role loading, plus the `ApplySecurityModel` round trip.
 
 ## Rules (do not change them without asking the owner)
 
@@ -99,16 +104,38 @@ W1-W12 writes, Q1-Q24 reads, plus the `ApplySecurityModel` round trip.
 - `AccessDeniedException` => 403 ProblemDetails with `deniedFields`, written by the handler itself rather than
   through `IProblemDetailsService`, so `AddSecurityBuilder` does not change how the rest of the app renders errors.
 
-## Planned decisions (Step 5)
+## Authentication (Step 5)
+
+Decided with the owner, then built in this order. Done so far:
 
 - Authentication: JWT bearer issued by the owner's own ASP.NET Core app (Keycloak may come later). The library
   stays authentication-agnostic: it only reads the `ClaimsPrincipal`.
-- Middleware (after `UseAuthentication`) reads the role claims, loads those roles' permissions and calls
-  `SecurityContext.SignIn(roles)`. Unauthenticated => anonymous (no roles).
-- The role claim type is configurable (default `ClaimTypes.Role`), so Keycloak later only changes configuration.
-- Role permissions come from an `IRolePermissionStore` interface (EF implementation in the EF package), with
-  in-memory caching per role and a way to invalidate when an admin changes a role. `ApplySecurityModel` already
-  auto-includes a role's permissions, so loading a role gives the whole aggregate.
+- `UseSecurityBuilder()` (after `UseAuthentication`) reads the role claims, loads those roles' permissions and
+  calls `SecurityContext.SignIn(roles)`. Unauthenticated => anonymous (no roles), which under R1 denies every
+  secured resource. A role name with no role behind it is skipped, because a token outlives a deleted role.
+- Every claim type is configurable through `AddSecurityBuilder(options => ...)` (defaults `ClaimTypes.Role`,
+  `NameIdentifier`, `Name`, `Email`), so Keycloak later only changes configuration.
+- **Roles in the token, permissions looked up per request.** Field-level permissions would bloat the token,
+  publish the permission matrix to the client (a JWT is signed, not encrypted) and go stale until expiry.
+  `IRolePermissionStore` + the cache means an admin's change takes effect on the next request.
+- `ICurrentUser` is the identity view and stays apart from `SecurityContext`, the authorization view. Use it
+  for audit fields. Outside a request it reports anonymous instead of throwing.
+
+Still to build:
+
+- **Users and tokens live in a separate opt-in package** (`SecurityBuilder.Identity`), not in the core. The
+  authorization half is authentication-agnostic and survives a move to Keycloak; the identity half is what
+  Keycloak replaces wholesale, so the dependency must not point the other way. A project on ASP.NET Core
+  Identity or Keycloak references the first three projects only.
+- `ISecurityTokenService` (interface in the core, JWT implementation where the packages are allowed) issuing
+  an access token plus a refresh token, registered with `TryAdd` so the owner's own implementation wins.
+  Refresh tokens: rotated one-time, reuse revokes the whole family, **stored hashed**, revoked on password
+  change, with an absolute lifetime cap as well as a sliding one.
+- The dev signing key comes from configuration/user-secrets, never hard-coded.
+- `samples/SecurityBuilder.Sample.Api` with `POST /auth/login`, the order endpoints and the admin endpoints
+  (R7 validation errors as 400).
+- Nothing enforces that a role name in a token has a matching `SecurityBuilder.Role`; a startup check that
+  warns about the mismatch is worth adding.
 - Finding worth keeping: a per-execution parameter is **not** reachable from `IQueryExpressionInterceptor`.
   That hook runs after parameter extraction and only on a cache miss, and EF rejects any reference to the
   DbContext in the tree it returns ("reference to a constant expression of ... could cause a memory leak").

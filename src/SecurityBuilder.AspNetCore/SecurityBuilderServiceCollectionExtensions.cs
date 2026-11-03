@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using SecurityBuilder.Abstractions;
 
 namespace SecurityBuilder.AspNetCore;
 
@@ -8,13 +9,24 @@ public static class SecurityBuilderServiceCollectionExtensions
     /// <summary>
     /// Builds the catalog once from the <c>IResourceSecurityConfiguration&lt;T&gt;</c> classes in the
     /// given assemblies, freezes it, and registers it as a singleton. The current user's
-    /// <see cref="SecurityContext"/> is scoped: one per request, anonymous until something signs it in.
+    /// <see cref="SecurityContext"/> and <see cref="ICurrentUser"/> are scoped: one per request,
+    /// anonymous until <c>UseSecurityBuilder</c> signs them in.
     ///
     /// Also maps <see cref="AccessDeniedException"/> to a 403 ProblemDetails response. That only takes
     /// effect once the app calls <c>UseExceptionHandler</c>.
     /// </summary>
     public static IServiceCollection AddSecurityBuilder(
         this IServiceCollection services,
+        params Assembly[] configurationAssemblies) =>
+        services.AddSecurityBuilder(configure: null, configurationAssemblies);
+
+    /// <summary>
+    /// The same, with the claim types the signed-in user is read from - the one place to change when
+    /// the token comes from somewhere else.
+    /// </summary>
+    public static IServiceCollection AddSecurityBuilder(
+        this IServiceCollection services,
+        Action<SecurityBuilderOptions>? configure,
         params Assembly[] configurationAssemblies)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -37,6 +49,15 @@ public static class SecurityBuilderServiceCollectionExtensions
 
         services.AddSingleton(registry);
         services.AddScoped<SecurityContext>();
+
+        services.AddOptions<SecurityBuilderOptions>();
+
+        if (configure is not null)
+            services.Configure(configure);
+
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+
         services.AddExceptionHandler<AccessDeniedExceptionHandler>();
 
         return services;
