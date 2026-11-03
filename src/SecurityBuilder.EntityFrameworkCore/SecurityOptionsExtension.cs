@@ -8,11 +8,12 @@ namespace SecurityBuilder.EntityFrameworkCore;
 /// Carries the current user's <see cref="SecurityContext"/> on the DbContext options, so the
 /// interceptors and the cache key generator can reach it without being built per user.
 /// </summary>
-public sealed class SecurityOptionsExtension(SecurityContext security) : IDbContextOptionsExtension
+public sealed class SecurityOptionsExtension(Func<SecurityContext> security) : IDbContextOptionsExtension
 {
     private DbContextOptionsExtensionInfo? _info;
 
-    public SecurityContext Security { get; } = security;
+    /// <summary>Resolved on each use, so the options can be shared while the user is per scope.</summary>
+    public SecurityContext Security => security();
 
     public DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
 

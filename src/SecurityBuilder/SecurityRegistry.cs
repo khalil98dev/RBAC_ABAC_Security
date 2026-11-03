@@ -10,12 +10,27 @@ namespace SecurityBuilder;
 public sealed class SecurityRegistry
 {
     private readonly Dictionary<Type, ResourceDefinition> _resources = [];
+    private bool _frozen;
 
     public IReadOnlyCollection<ResourceDefinition> Resources => _resources.Values;
+
+    /// <summary>True once the catalog is closed. A frozen registry is safe to read from any thread.</summary>
+    public bool IsFrozen => _frozen;
+
+    /// <summary>
+    /// Closes the catalog. Nothing can be configured afterwards, which is what makes a single
+    /// registry safe to share: it is written during startup and only read after that.
+    /// </summary>
+    public SecurityRegistry Freeze()
+    {
+        _frozen = true;
+        return this;
+    }
 
     public SecurityRegistry Configure<T>(Action<ResourceSecurityBuilder<T>> configure) where T : IAggregateRoot
     {
         ArgumentNullException.ThrowIfNull(configure);
+        EnsureNotFrozen();
 
         // Any configured resource is registered, even if it only secures fields.
         var definition = GetOrRegister(typeof(T));
@@ -71,6 +86,7 @@ public sealed class SecurityRegistry
 
     internal void SetName(Type resourceType, string name)
     {
+        EnsureNotFrozen();
         ArgumentNullException.ThrowIfNull(resourceType);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -81,6 +97,7 @@ public sealed class SecurityRegistry
 
     internal void AddResource(Type resourceType, IEnumerable<ResourceActions> actions)
     {
+        EnsureNotFrozen();
         ArgumentNullException.ThrowIfNull(resourceType);
         ArgumentNullException.ThrowIfNull(actions);
 
@@ -95,6 +112,7 @@ public sealed class SecurityRegistry
 
     internal void AddField(Type resourceType, string propertyName, IEnumerable<FieldsActions> actions)
     {
+        EnsureNotFrozen();
         ArgumentNullException.ThrowIfNull(resourceType);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
         ArgumentNullException.ThrowIfNull(actions);
@@ -265,6 +283,15 @@ public sealed class SecurityRegistry
         {
             throw new ArgumentOutOfRangeException(nameof(action), action,
                 "Specify exactly one resource action (Create, Delete, Read or Set).");
+        }
+    }
+
+    private void EnsureNotFrozen()
+    {
+        if (_frozen)
+        {
+            throw new InvalidOperationException(
+                "The security registry is frozen. Configure every resource during startup.");
         }
     }
 

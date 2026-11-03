@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -22,6 +22,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SecurityBuilder\SecurityBuilder.csproj" />
     <ProjectReference Include="..\..\src\SecurityBuilder.EntityFrameworkCore\SecurityBuilder.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\SecurityBuilder.AspNetCore\SecurityBuilder.AspNetCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
