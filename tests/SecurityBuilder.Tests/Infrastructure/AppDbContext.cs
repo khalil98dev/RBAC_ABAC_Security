@@ -1,5 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SecurityBuilder.EntityFrameworkCore;
+using SecurityBuilder.Identity;
 using SecurityBuilder.Tests.Aggregates;
 
 namespace SecurityBuilder.Tests.Infrastructure;
@@ -12,6 +13,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<Product> Products => Set<Product>();
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
         modelBuilder.ApplySecurityModel();
+        modelBuilder.ApplyIdentityModel();
+    }
 }

@@ -4,7 +4,7 @@ A reusable library for role-based access control on resources (aggregates) plus 
 control. It will be reused in future projects, so the code must stay clean, simple and human-readable.
 
 Current shape: a .NET 10 solution, `SecurityBuilder.slnx`, with the core library, the EF Core
-integration, the ASP.NET Core integration, and 99 xUnit tests. `dotnet test` must stay green and the
+integration, the ASP.NET Core integration, the opt-in identity package, and 113 xUnit tests. `dotnet test` must stay green and the
 build must stay warning-free.
 
 ## Layout
@@ -14,10 +14,11 @@ build must stay warning-free.
 | `src/SecurityBuilder` | The core. **No dependencies at all**: no EF Core, no ASP.NET Core. |
 | `src/SecurityBuilder.EntityFrameworkCore` | `Microsoft.EntityFrameworkCore` + `Microsoft.EntityFrameworkCore.Relational`, no provider. |
 | `src/SecurityBuilder.AspNetCore` | DI, the sign-in middleware, `ICurrentUser` and the 403 mapping. References the core only, not EF. |
+| `src/SecurityBuilder.Identity` | **Opt-in.** JWT issuing and refresh tokens; `Microsoft.IdentityModel.JsonWebTokens`. References the core and the EF package. Nothing else references it. |
 | `tests/SecurityBuilder.Tests` | xUnit, SQLite. Owns the demo domain the tests run against. |
 
-Still to come: `src/SecurityBuilder.Identity` (the opt-in users package, decided in Step 5), the JWT
-implementation of `ISecurityTokenService`, and `samples/SecurityBuilder.Sample.Api`.
+Still to come: users (the `User` entity, password hashing and login) inside
+`src/SecurityBuilder.Identity`, and `samples/SecurityBuilder.Sample.Api`.
 
 ## Pieces
 
@@ -44,9 +45,16 @@ implementation of `ISecurityTokenService`, and `samples/SecurityBuilder.Sample.A
 | ASP: `SecuritySignInMiddleware.cs` | `UseSecurityBuilder()`, placed after `UseAuthentication`: role claims => permissions => `SignIn`. Unauthenticated stays anonymous. |
 | ASP: `SecurityBuilderOptions.cs`, `HttpContextCurrentUser.cs` | The claim types to read (role, id, name, email); `ICurrentUser` over `IHttpContextAccessor`, anonymous when there is no request. |
 | ASP: `AccessDeniedExceptionHandler.cs` | `AccessDeniedException` => 403 ProblemDetails with `deniedFields`. Needs `app.UseExceptionHandler()`. |
+| `Abstractions/ISecurityTokenService.cs`, `Tokens/*` | Issue/refresh/revoke, `TokenSubject`, `TokenPair`, `InvalidRefreshTokenException`. Interfaces only: the core signs nothing. |
+| `Abstractions/ITokenSubjectProvider.cs` | Where a user's name, email and roles come from on refresh. The seam that keeps the token service out of the user store; the application implements it. |
+| Id: `JwtSecurityTokenService.cs` | HMAC-SHA256 access tokens, rotating refresh tokens. Issues only - JwtBearer still validates. Takes a `TimeProvider`. |
+| Id: `RefreshToken.cs`, `IRefreshTokenStore.cs`, `EfRefreshTokenStore.cs` | One link in a chain: `Start`/`Rotate`/`MarkUsed`/`Revoke`, sliding expiry clamped to the family's cap. Each store method is one unit of work. |
+| Id: `JwtOptions.cs` | Key, issuer, audience, lifetimes, claim types; `EnsureValid()` runs when the service is first resolved. |
+| Id: `IdentityModelBuilderExtensions.cs`, `JwtTokenServiceCollectionExtensions.cs` | `ApplyIdentityModel()` maps `RefreshTokens`; `AddJwtTokens<TContext>(configure)` registers everything with `TryAdd`. |
 
 Tests keep the original scenario ids in comments: V1-V10 grant validation, E1-E19 evaluation,
-W1-W12 writes, Q1-Q24 reads, A1-A17 sign-in and role loading, plus the `ApplySecurityModel` round trip.
+W1-W12 writes, Q1-Q24 reads, A1-A17 sign-in and role loading, T1-T14 tokens, plus the
+`ApplySecurityModel` round trip.
 
 ## Rules (do not change them without asking the owner)
 
@@ -121,19 +129,34 @@ Decided with the owner, then built in this order. Done so far:
 - `ICurrentUser` is the identity view and stays apart from `SecurityContext`, the authorization view. Use it
   for audit fields. Outside a request it reports anonymous instead of throwing.
 
+### Tokens (built in `SecurityBuilder.Identity`)
+
+- **Users and tokens live in a separate opt-in package**, not in the core. The authorization half is
+  authentication-agnostic and survives a move to Keycloak; the identity half is what Keycloak replaces
+  wholesale, so the dependency must not point the other way. A project on ASP.NET Core Identity or Keycloak
+  references the first three projects only.
+- `ISecurityTokenService` in the core, `JwtSecurityTokenService` in the identity package, registered with
+  `TryAdd` so the owner's own implementation wins.
+- The signing key comes from configuration/user-secrets: there is no default and `EnsureValid()` refuses to
+  start without one, or with one shorter than 32 bytes (HMAC-SHA256's minimum).
+- Refresh tokens: **rotated one-time**; a token presented twice revokes the whole family, because nothing can
+  tell a replay from a theft; **only a SHA-256 hash is stored** (no salt needed - the value is 256 random bits,
+  not a password); `RevokeAllAsync(userId)` is the security-stamp equivalent for a password change; a sliding
+  expiry per token clamped by an absolute cap per chain.
+- Refresh re-reads the subject through `ITokenSubjectProvider`, so a role taken away is gone from the next
+  access token and a closed account refuses the refresh and loses its family.
+- Claims are written as the full `ClaimTypes` URIs the middleware reads, not the short JWT names, so a token
+  round-trips whatever `JwtBearerOptions.MapInboundClaims` is set to. The defaults on both sides match;
+  changing one means changing the other.
+- Provider quirk: SQLite refuses to `ORDER BY` a `DateTimeOffset`, so a cleanup job over `ExpiresAt` has to
+  order or compare client-side there. Nothing in the library does.
+
 Still to build:
 
-- **Users and tokens live in a separate opt-in package** (`SecurityBuilder.Identity`), not in the core. The
-  authorization half is authentication-agnostic and survives a move to Keycloak; the identity half is what
-  Keycloak replaces wholesale, so the dependency must not point the other way. A project on ASP.NET Core
-  Identity or Keycloak references the first three projects only.
-- `ISecurityTokenService` (interface in the core, JWT implementation where the packages are allowed) issuing
-  an access token plus a refresh token, registered with `TryAdd` so the owner's own implementation wins.
-  Refresh tokens: rotated one-time, reuse revokes the whole family, **stored hashed**, revoked on password
-  change, with an absolute lifetime cap as well as a sliding one.
-- The dev signing key comes from configuration/user-secrets, never hard-coded.
-- `samples/SecurityBuilder.Sample.Api` with `POST /auth/login`, the order endpoints and the admin endpoints
-  (R7 validation errors as 400).
+- Users inside the identity package: the `User` entity, password hashing (with rehash on upgrade), login, and
+  an `ITokenSubjectProvider` over it.
+- `samples/SecurityBuilder.Sample.Api` with `POST /auth/login`, `POST /auth/refresh`, the order endpoints and
+  the admin endpoints (R7 validation errors as 400), plus the JwtBearer wiring.
 - Nothing enforces that a role name in a token has a matching `SecurityBuilder.Role`; a startup check that
   warns about the mismatch is worth adding.
 - Finding worth keeping: a per-execution parameter is **not** reachable from `IQueryExpressionInterceptor`.

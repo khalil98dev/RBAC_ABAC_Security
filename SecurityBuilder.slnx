@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/SecurityBuilder.AspNetCore/SecurityBuilder.AspNetCore.csproj" />
     <Project Path="src/SecurityBuilder.EntityFrameworkCore/SecurityBuilder.EntityFrameworkCore.csproj" />
+    <Project Path="src/SecurityBuilder.Identity/SecurityBuilder.Identity.csproj" />
     <Project Path="src/SecurityBuilder/SecurityBuilder.csproj" />
   </Folder>
   <Folder Name="/tests/">
