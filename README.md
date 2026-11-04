@@ -108,3 +108,7 @@ checked. Do not use them on secured resources.
 
 `samples/SecurityBuilder.Sample.Api` in the repository wires all four packages over SQLite, with a
 `.http` file that walks through every rule.
+
+## License
+
+MIT. See `LICENSE` in the repository.

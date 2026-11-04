@@ -16,6 +16,10 @@
     <VersionPrefix>0.1.0</VersionPrefix>
 
     <Authors>Khalil.dev</Authors>
+    <Copyright>Copyright (c) 2026 Khalil.dev</Copyright>
+    <!-- An SPDX expression, not a file: nuget.org links it to the standard text. The full text with the
+         copyright line is LICENSE at the repository root. Never set PackageLicenseFile as well. -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/khalil98dev/RBAC_ABAC_Security</PackageProjectUrl>
     <RepositoryUrl>https://github.com/khalil98dev/RBAC_ABAC_Security</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

@@ -42,8 +42,11 @@ The four `src` projects are NuGet packages; everything else sets `IsPackable=fal
 - Verified by a throwaway console project that references only the packages, restored from
   `artifacts/packages` into an isolated cache: a grant, a user, sign-in, masking and an anonymous denial all
   work from the nupkgs.
-- No license is declared yet: fine for a private feed, needed before nuget.org. The id `SecurityBuilder`
-  may also be taken on nuget.org.
+- MIT: `PackageLicenseExpression` in `src/Directory.Build.props` (never `PackageLicenseFile` as well - pack
+  refuses both), and the full text with the copyright line in `LICENSE` at the root.
+- The four ids were free on nuget.org when checked before the first release (2026-11-04).
+- Releasing by hand: pack in Release, then upload each `.nupkg` (and `.snupkg`) on nuget.org's Upload page,
+  core first. A published version can never be deleted or reused, only unlisted.
 
 ## Pieces
 
