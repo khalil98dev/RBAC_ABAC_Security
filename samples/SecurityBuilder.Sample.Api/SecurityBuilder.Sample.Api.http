@@ -1,0 +1,123 @@
+# SecurityBuilder sample API.
+#
+# Run the "http" profile first. The demo accounts are viewer, sales and admin; their password is
+# Seed:Password in appsettings.Development.json. Set it below once.
+#
+# Named requests (# @name) let later ones reuse a token: {{login.response.body.$.accessToken}}.
+# Visual Studio 17.12+, Rider and the VS Code REST Client all support this.
+
+@host = http://localhost:5180
+@password = sample-password-123
+
+### Anonymous: denied by SecurityBuilder itself (R1), no [Authorize] on the endpoint
+GET {{host}}/orders
+
+### Sign in as the viewer
+# @name viewer
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "userName": "viewer", "password": "{{password}}" }
+
+### Sign in as sales
+# @name sales
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "userName": "sales", "password": "{{password}}" }
+
+### Sign in as admin
+# @name admin
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "userName": "admin", "password": "{{password}}" }
+
+### Who am I, and what may I read
+GET {{host}}/me
+Authorization: Bearer {{viewer.response.body.$.accessToken}}
+
+### Viewer: amounts visible, customerId null (R5)
+# @name orders
+GET {{host}}/orders
+Authorization: Bearer {{viewer.response.body.$.accessToken}}
+
+### Sales: customerId visible too
+GET {{host}}/orders
+Authorization: Bearer {{sales.response.body.$.accessToken}}
+
+### Viewer: price null
+GET {{host}}/products
+Authorization: Bearer {{viewer.response.body.$.accessToken}}
+
+### Viewer cannot change an order: 403, no Set on the resource (R4)
+PUT {{host}}/orders/{{orders.response.body.$[0].id}}
+Authorization: Bearer {{viewer.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "totalAmmount": 999 }
+
+### Sales changes the amount and the date: 204
+PUT {{host}}/orders/{{orders.response.body.$[0].id}}
+Authorization: Bearer {{sales.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "totalAmmount": 130, "issueDate": "2026-04-01T00:00:00" }
+
+### Refresh: a new pair. Send it twice and the second is 401 - and the whole family is revoked
+POST {{host}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{sales.response.body.$.refreshToken}}" }
+
+### Sign out: the refresh token stops working
+POST {{host}}/auth/logout
+Content-Type: application/json
+
+{ "refreshToken": "{{viewer.response.body.$.refreshToken}}" }
+
+### Admin: roles and their grants, in the shape PUT takes back
+GET {{host}}/admin/roles
+Authorization: Bearer {{admin.response.body.$.accessToken}}
+
+### Admin: invalid grants are 400 with every error at once (R7)
+PUT {{host}}/admin/roles/Sales/permissions
+Authorization: Bearer {{admin.response.body.$.accessToken}}
+Content-Type: application/json
+
+[
+  { "resource": "Invoice", "actions": "Read" },
+  { "resource": "Order", "actions": "Read, Delete", "fields": { "Nope": "Read" } }
+]
+
+### Admin: take IssueDate:Set away from Sales. Their existing token is affected at once
+PUT {{host}}/admin/roles/Sales/permissions
+Authorization: Bearer {{admin.response.body.$.accessToken}}
+Content-Type: application/json
+
+[
+  { "resource": "Order", "actions": "Read, Set", "fields": { "TotalAmmount": "Read, Set", "CustomerId": "Read" } },
+  { "resource": "Product", "actions": "Read", "fields": { "Price": "Read" } }
+]
+
+### Sales, same token: 403 with deniedFields ["IssueDate"] (R6)
+PUT {{host}}/orders/{{orders.response.body.$[0].id}}
+Authorization: Bearer {{sales.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "issueDate": "2026-05-01T00:00:00" }
+
+### Admin: create a user
+POST {{host}}/admin/users
+Authorization: Bearer {{admin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "userName": "karim", "email": "karim@example.com", "password": "karim-password-1", "roles": ["Viewer"] }
+
+### Admin: list users
+GET {{host}}/admin/users
+Authorization: Bearer {{admin.response.body.$.accessToken}}
+
+### Viewer: the admin endpoints are refused (403)
+GET {{host}}/admin/roles
+Authorization: Bearer {{viewer.response.body.$.accessToken}}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Description>Optional users and tokens for SecurityBuilder: accounts with hashed passwords, JWT access tokens and rotating refresh tokens with reuse detection. Skip it when users come from ASP.NET Core Identity or an external provider.</Description>
+    <PackageTags>$(PackageTags);jwt;refresh-token;identity</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Opt-in package: this is the half an external identity provider replaces, so the signing and
+         the token tables live here and nothing in the other projects depends on them. -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
+    <!-- Only for PasswordHasher<T>: PBKDF2 with a versioned format and rehash detection. Not the
+         Identity stores, not the UI, not AddIdentity. -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SecurityBuilder\SecurityBuilder.csproj" />
+    <ProjectReference Include="..\SecurityBuilder.EntityFrameworkCore\SecurityBuilder.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+
+</Project>

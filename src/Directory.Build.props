@@ -1,0 +1,47 @@
+<Project>
+
+  <!--
+    Everything under src/ ships as a NuGet package; tests and samples are outside this folder and set
+    IsPackable=false themselves.
+
+    One version for all four packages. They are built and tested together, and pieces of them only
+    work as a set: the EF query interceptor is safe only next to the cache key generator, the identity
+    package's tokens are read by the AspNetCore middleware. Mixing versions is not supported.
+
+    Pack with:  dotnet pack SecurityBuilder.slnx -c Release
+    A release:  dotnet pack SecurityBuilder.slnx -c Release -p:VersionPrefix=0.2.0
+    A preview:  dotnet pack SecurityBuilder.slnx -c Release -p:VersionSuffix=preview.1
+  -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+
+    <Authors>Khalil.dev</Authors>
+    <Copyright>Copyright (c) 2026 Khalil.dev</Copyright>
+    <!-- An SPDX expression, not a file: nuget.org links it to the standard text. The full text with the
+         copyright line is LICENSE at the repository root. Never set PackageLicenseFile as well. -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/khalil98dev/RBAC_ABAC_Security</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/khalil98dev/RBAC_ABAC_Security</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageTags>authorization;rbac;abac;permissions;field-level-security</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- The XML docs carry the reasoning (why a field is null, why a hidden field cannot be sorted on),
+         so they ship with the package. Not every public member needs one, hence CS1591 is off. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Symbols beside the package; the .NET SDK adds Source Link for the GitHub remote by itself. -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\artifacts\packages</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>

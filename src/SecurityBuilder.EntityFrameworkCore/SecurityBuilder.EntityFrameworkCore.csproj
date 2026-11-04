@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Description>Applies SecurityBuilder to plain EF Core: hidden fields come back null in projections, writes are checked before they are saved, and the compiled-query cache is keyed per visibility.</Description>
+    <PackageTags>$(PackageTags);efcore;entity-framework-core</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- EF Core only, no database provider. Relational is needed for the read side:
+         SecurityCompiledQueryCacheKeyGenerator derives from the relational one. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SecurityBuilder\SecurityBuilder.csproj" />
+  </ItemGroup>
+
+</Project>
