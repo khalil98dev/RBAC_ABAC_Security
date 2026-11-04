@@ -8,7 +8,6 @@ public sealed class OrderSecurityConfiguration : IResourceSecurityConfiguration<
 {
     public void Configure(ResourceSecurityBuilder<Order> builder)
     {
-        // Reading and changing are secured; creating and deleting stay open (R2).
         builder.SecureResource(ResourceActions.Read, ResourceActions.Set);
 
         builder.SecureField(order => order.TotalAmmount, FieldsActions.Read, FieldsActions.Set);

@@ -14,7 +14,5 @@ public interface IRolePermissionStore
     /// a name with no role behind it is skipped rather than failing the request, because a token can
     /// outlive a role that was deleted.
     /// </summary>
-    Task<IReadOnlyCollection<Role>> GetRolesAsync(
-        IEnumerable<string> roleNames,
-        CancellationToken cancellationToken = default);
+    Task<IReadOnlyCollection<Role>> GetRolesAsync(IEnumerable<string> roleNames,CancellationToken cancellationToken = default);
 }

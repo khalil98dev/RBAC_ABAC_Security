@@ -12,3 +12,6 @@ TestResults/
 *.db
 *.db-shm
 *.db-wal
+
+# dotnet pack writes the packages here.
+artifacts/

@@ -6,7 +6,7 @@ namespace SecurityBuilder.EntityFrameworkCore;
 
 /// <summary>
 /// Rewrites one query for one visibility:
-///   inside a Select projection a field the user may not read becomes null (R5);
+///   inside a Select projection a field the user may not read becomes null ;
 ///   anywhere else - Where, OrderBy, aggregates - using such a field is denied.
 /// Fields the registry does not secure for Read are left untouched, so entity queries
 /// (which read no field in the query itself) come back whole.

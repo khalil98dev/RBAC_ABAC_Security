@@ -16,11 +16,34 @@ build must stay warning-free.
 | `src/SecurityBuilder.EntityFrameworkCore` | `Microsoft.EntityFrameworkCore` + `Microsoft.EntityFrameworkCore.Relational`, no provider. |
 | `src/SecurityBuilder.AspNetCore` | DI, the sign-in middleware, `ICurrentUser` and the 403 mapping. References the core only, not EF. |
 | `src/SecurityBuilder.Identity` | **Opt-in.** Users, JWT issuing and refresh tokens; `Microsoft.IdentityModel.JsonWebTokens` and `Microsoft.Extensions.Identity.Core` (for `PasswordHasher<T>` only). References the core and the EF package. Nothing else in `src` references it. |
+| `src/Directory.Build.props`, `SecurityBuilder.Packages.slnf` | Package metadata for the four libraries; the filter `dotnet pack` runs on. |
 | `samples/SecurityBuilder.Sample.Api` | Minimal API over SQLite wiring all four packages, with a `.http` file. Seeds three roles and demo accounts in Development. Signing key in user-secrets (`UserSecretsId` `securitybuilder-sample-api`). |
 | `tests/SecurityBuilder.Tests` | xUnit, SQLite. Owns the demo domain the tests run against. |
 
 Run the sample with `dotnet run --project samples/SecurityBuilder.Sample.Api --launch-profile http`
 (port 5180). It needs `Jwt:SigningKey` in its user-secrets first.
+
+## Packaging
+
+The four `src` projects are NuGet packages; everything else sets `IsPackable=false`.
+
+- `src/Directory.Build.props` holds the shared package metadata: one `VersionPrefix` for all four (they only
+  work as a set), authors, repository URL, tags, the root `README.md` as the package readme, XML docs shipped
+  in the package (`CS1591` off: not every public member needs a doc), and `.snupkg` symbols. The SDK adds
+  Source Link for the GitHub remote by itself. Each `.csproj` adds its own `Description` and tags.
+- Pack with `dotnet pack SecurityBuilder.Packages.slnf -c Release`, which writes to `artifacts/packages`
+  (ignored). Pack through the filter, not the solution: the Web SDK sample warns when a solution-wide pack
+  reaches it, even with `IsPackable=false`.
+- Project references become package dependencies at the same version, so `SecurityBuilder.Identity 0.1.0`
+  pulls `SecurityBuilder.EntityFrameworkCore 0.1.0` and `SecurityBuilder 0.1.0`.
+- **Bump the version for every pack another project will restore.** NuGet caches a version forever in the
+  global packages folder, so repacking 0.1.0 is silently ignored by anything that already restored it. Use
+  `-p:VersionSuffix=preview.N` while iterating.
+- Verified by a throwaway console project that references only the packages, restored from
+  `artifacts/packages` into an isolated cache: a grant, a user, sign-in, masking and an anonymous denial all
+  work from the nupkgs.
+- No license is declared yet: fine for a private feed, needed before nuget.org. The id `SecurityBuilder`
+  may also be taken on nuget.org.
 
 ## Pieces
 

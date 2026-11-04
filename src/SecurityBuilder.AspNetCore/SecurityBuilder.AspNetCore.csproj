@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>Wires SecurityBuilder into ASP.NET Core: dependency injection, the middleware that signs the current user in from role claims, ICurrentUser, and AccessDeniedException as 403 ProblemDetails.</Description>
+    <PackageTags>$(PackageTags);aspnetcore</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

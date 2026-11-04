@@ -61,6 +61,7 @@ public sealed class AccessEvaluator
         return Authorize(typeof(T), action, fieldAction, fields.Length == 0 ? null : fields);
     }
 
+    /// <param name="resourceType">The aggregate type, as registered.</param>
     /// <param name="action">One resource action (Create, Read, Set or Delete).</param>
     /// <param name="fieldAction">Read or Set to check fields, None to skip them.</param>
     /// <param name="fields">Fields to check. Null = every secured field of the resource.</param>

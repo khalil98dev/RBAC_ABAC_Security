@@ -8,7 +8,6 @@ public sealed class ProductSecurityConfiguration : IResourceSecurityConfiguratio
 {
     public void Configure(ResourceSecurityBuilder<Product> builder)
     {
-        // No arguments: every action is secured.
         builder
             .SecureResource()
             .SecureField(product => product.Price, FieldsActions.Read, FieldsActions.Set);

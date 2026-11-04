@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "SecurityBuilder.slnx",
+    "projects": [
+      "src\\SecurityBuilder\\SecurityBuilder.csproj",
+      "src\\SecurityBuilder.EntityFrameworkCore\\SecurityBuilder.EntityFrameworkCore.csproj",
+      "src\\SecurityBuilder.AspNetCore\\SecurityBuilder.AspNetCore.csproj",
+      "src\\SecurityBuilder.Identity\\SecurityBuilder.Identity.csproj"
+    ]
+  }
+}

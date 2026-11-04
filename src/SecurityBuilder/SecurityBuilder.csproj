@@ -4,8 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>Role-based access control on resources plus field-level access control. The core: the registry, roles, permissions and the evaluator. No dependencies.</Description>
   </PropertyGroup>
-
-  <!-- The core library has no dependencies on purpose: no EF Core, no ASP.NET Core. -->
-
 </Project>
