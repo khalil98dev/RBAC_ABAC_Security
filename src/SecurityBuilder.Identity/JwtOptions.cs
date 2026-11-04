@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using Microsoft.IdentityModel.Tokens;
 
 namespace SecurityBuilder.Identity;
 
@@ -39,6 +40,31 @@ public sealed class JwtOptions
 
     /// <summary>The smallest key HMAC-SHA256 may be used with: 256 bits.</summary>
     public const int MinimumSigningKeyBytes = 32;
+
+    /// <summary>
+    /// What JwtBearer has to check for a token issued here, from the same settings that issue it - so
+    /// the two cannot drift apart. Only HMAC-SHA256 is accepted: a token naming any other algorithm
+    /// is refused, whatever its header claims.
+    /// </summary>
+    public TokenValidationParameters ToValidationParameters()
+    {
+        EnsureValid();
+
+        return new TokenValidationParameters
+        {
+            ValidIssuer = Issuer,
+            ValidAudience = Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SigningKey)),
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = UserNameClaimType,
+            RoleClaimType = RoleClaimType
+        };
+    }
 
     /// <summary>Checked once, when the token service is first resolved.</summary>
     public void EnsureValid()

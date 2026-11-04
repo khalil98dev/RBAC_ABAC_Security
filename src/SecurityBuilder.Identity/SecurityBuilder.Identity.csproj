@@ -10,6 +10,9 @@
     <!-- Opt-in package: this is the half an external identity provider replaces, so the signing and
          the token tables live here and nothing in the other projects depends on them. -->
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
+    <!-- Only for PasswordHasher<T>: PBKDF2 with a versioned format and rehash detection. Not the
+         Identity stores, not the UI, not AddIdentity. -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.2" />
   </ItemGroup>
 
   <ItemGroup>

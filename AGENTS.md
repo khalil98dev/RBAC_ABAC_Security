@@ -4,7 +4,8 @@ A reusable library for role-based access control on resources (aggregates) plus 
 control. It will be reused in future projects, so the code must stay clean, simple and human-readable.
 
 Current shape: a .NET 10 solution, `SecurityBuilder.slnx`, with the core library, the EF Core
-integration, the ASP.NET Core integration, the opt-in identity package, and 113 xUnit tests. `dotnet test` must stay green and the
+integration, the ASP.NET Core integration, the opt-in identity package, a sample API, and 125 xUnit
+tests. `dotnet test` must stay green and the
 build must stay warning-free.
 
 ## Layout
@@ -14,11 +15,12 @@ build must stay warning-free.
 | `src/SecurityBuilder` | The core. **No dependencies at all**: no EF Core, no ASP.NET Core. |
 | `src/SecurityBuilder.EntityFrameworkCore` | `Microsoft.EntityFrameworkCore` + `Microsoft.EntityFrameworkCore.Relational`, no provider. |
 | `src/SecurityBuilder.AspNetCore` | DI, the sign-in middleware, `ICurrentUser` and the 403 mapping. References the core only, not EF. |
-| `src/SecurityBuilder.Identity` | **Opt-in.** JWT issuing and refresh tokens; `Microsoft.IdentityModel.JsonWebTokens`. References the core and the EF package. Nothing else references it. |
+| `src/SecurityBuilder.Identity` | **Opt-in.** Users, JWT issuing and refresh tokens; `Microsoft.IdentityModel.JsonWebTokens` and `Microsoft.Extensions.Identity.Core` (for `PasswordHasher<T>` only). References the core and the EF package. Nothing else in `src` references it. |
+| `samples/SecurityBuilder.Sample.Api` | Minimal API over SQLite wiring all four packages, with a `.http` file. Seeds three roles and demo accounts in Development. Signing key in user-secrets (`UserSecretsId` `securitybuilder-sample-api`). |
 | `tests/SecurityBuilder.Tests` | xUnit, SQLite. Owns the demo domain the tests run against. |
 
-Still to come: users (the `User` entity, password hashing and login) inside
-`src/SecurityBuilder.Identity`, and `samples/SecurityBuilder.Sample.Api`.
+Run the sample with `dotnet run --project samples/SecurityBuilder.Sample.Api --launch-profile http`
+(port 5180). It needs `Jwt:SigningKey` in its user-secrets first.
 
 ## Pieces
 
@@ -44,17 +46,20 @@ Still to come: users (the `User` entity, password hashing and login) inside
 | EF: `RolePermissionStore.cs` | Reads roles `AsNoTracking`, matched on `ToUpper()` rather than trusting the provider's collation; `AddRolePermissionStore<TContext>(cacheDuration?)` wires it behind the cache (`TimeSpan.Zero` = no cache). |
 | ASP: `SecuritySignInMiddleware.cs` | `UseSecurityBuilder()`, placed after `UseAuthentication`: role claims => permissions => `SignIn`. Unauthenticated stays anonymous. |
 | ASP: `SecurityBuilderOptions.cs`, `HttpContextCurrentUser.cs` | The claim types to read (role, id, name, email); `ICurrentUser` over `IHttpContextAccessor`, anonymous when there is no request. |
-| ASP: `AccessDeniedExceptionHandler.cs` | `AccessDeniedException` => 403 ProblemDetails with `deniedFields`. Needs `app.UseExceptionHandler()`. |
+| ASP: `AccessDeniedExceptionHandler.cs` | `AccessDeniedException` => 403 ProblemDetails with `deniedFields`. Needs `app.UseExceptionHandler()`, which itself refuses to start without `AddProblemDetails()` or an error path - the host adds one. |
 | `Abstractions/ISecurityTokenService.cs`, `Tokens/*` | Issue/refresh/revoke, `TokenSubject`, `TokenPair`, `InvalidRefreshTokenException`. Interfaces only: the core signs nothing. |
 | `Abstractions/ITokenSubjectProvider.cs` | Where a user's name, email and roles come from on refresh. The seam that keeps the token service out of the user store; the application implements it. |
 | Id: `JwtSecurityTokenService.cs` | HMAC-SHA256 access tokens, rotating refresh tokens. Issues only - JwtBearer still validates. Takes a `TimeProvider`. |
 | Id: `RefreshToken.cs`, `IRefreshTokenStore.cs`, `EfRefreshTokenStore.cs` | One link in a chain: `Start`/`Rotate`/`MarkUsed`/`Revoke`, sliding expiry clamped to the family's cap. Each store method is one unit of work. |
 | Id: `JwtOptions.cs` | Key, issuer, audience, lifetimes, claim types; `EnsureValid()` runs when the service is first resolved. |
-| Id: `IdentityModelBuilderExtensions.cs`, `JwtTokenServiceCollectionExtensions.cs` | `ApplyIdentityModel()` maps `RefreshTokens`; `AddJwtTokens<TContext>(configure)` registers everything with `TryAdd`. |
+| Id: `IdentityModelBuilderExtensions.cs`, `JwtTokenServiceCollectionExtensions.cs` | `ApplyIdentityModel()` maps `Users`, `UserRoles`, `RefreshTokens` (call it after `ApplySecurityModel`); `AddJwtTokens<TContext>(configure)` registers everything with `TryAdd`. |
+| Id: `User.cs` | Account with `NormalizedUserName` (upper case, unique), membership by role id (`UserRole`), `IsActive`. The hash is set only by the account service. |
+| Id: `UserAccountService.cs` | `CreateAsync` (all errors at once), `SignInAsync` (null for every failure, rehash on upgrade, constant-ish timing for unknown names), `ChangePasswordAsync` and `DeactivateAsync`, both of which revoke every session. |
+| Id: `UserTokenSubjectProvider.cs`, `UserServiceCollectionExtensions.cs` | `ITokenSubjectProvider` over the users table; `AddUsers<TContext>()`. |
 
 Tests keep the original scenario ids in comments: V1-V10 grant validation, E1-E19 evaluation,
-W1-W12 writes, Q1-Q24 reads, A1-A17 sign-in and role loading, T1-T14 tokens, plus the
-`ApplySecurityModel` round trip.
+W1-W12 writes, Q1-Q24 reads, A1-A17 sign-in and role loading, T1-T14 tokens, U1-U11 users, plus the
+`ApplySecurityModel` round trip and replacing a saved role's permissions.
 
 ## Rules (do not change them without asking the owner)
 
@@ -111,6 +116,12 @@ W1-W12 writes, Q1-Q24 reads, A1-A17 sign-in and role loading, T1-T14 tokens, plu
   while the user itself stays per scope. **No DbContext pooling**: a pooled context would outlive its user.
 - `AccessDeniedException` => 403 ProblemDetails with `deniedFields`, written by the handler itself rather than
   through `IProblemDetailsService`, so `AddSecurityBuilder` does not change how the rest of the app renders errors.
+  Found in Step 5: a bare `app.UseExceptionHandler()` throws at startup unless the host also calls
+  `AddProblemDetails()` or sets an error path, even with an `IExceptionHandler` registered.
+- **Every key the domain generates is `ValueGeneratedNever`** (found in Step 5). Entities make their own
+  `Guid` ids in their constructors; left to the convention, EF takes a new entity found in a navigation with
+  its key already set for an existing one and sends an `UPDATE` (`DbUpdateConcurrencyException`, 0 rows).
+  That broke replacing a saved role's permissions. Any aggregate mapped in an application has the same trap.
 
 ## Authentication (Step 5)
 
@@ -151,12 +162,35 @@ Decided with the owner, then built in this order. Done so far:
 - Provider quirk: SQLite refuses to `ORDER BY` a `DateTimeOffset`, so a cleanup job over `ExpiresAt` has to
   order or compare client-side there. Nothing in the library does.
 
-Still to build:
+- `JwtOptions.ToValidationParameters()` gives JwtBearer the settings the service signs with, and accepts only
+  HS256. The sample wires it through `AddOptions<JwtBearerOptions>().Configure<IOptions<JwtOptions>>`, so there
+  is one source of truth.
 
-- Users inside the identity package: the `User` entity, password hashing (with rehash on upgrade), login, and
-  an `ITokenSubjectProvider` over it.
-- `samples/SecurityBuilder.Sample.Api` with `POST /auth/login`, `POST /auth/refresh`, the order endpoints and
-  the admin endpoints (R7 validation errors as 400), plus the JwtBearer wiring.
+### Users (built in `SecurityBuilder.Identity`)
+
+- Hashing is `IPasswordHasher<User>` from `Microsoft.Extensions.Identity.Core`, not hand-written; a hash in an
+  older format is re-hashed on the next successful sign-in.
+- User names are unique on `NormalizedUserName` (upper case), not on the provider's collation.
+- Sign-in returns null for a wrong password, an unknown name and a deactivated account alike, and verifies
+  against a dummy hash for an unknown name, so neither the answer nor its timing says which names exist.
+- Membership is by role id with a cascading foreign key, so deleting a role leaves no name behind.
+- Users, roles and refresh tokens are not secured resources: they are read before anyone is signed in. The
+  sample guards its admin endpoints with ASP.NET Core's `RequireRole("Admin")`.
+
+### Sample API
+
+- Verified end to end against the real JwtBearer pipeline: masking per role, R4/R6 on writes, R7 as 400, a
+  role narrowed by an admin affecting an existing token on the next request, refresh rotation and family
+  revocation, logout, password change and deactivation ending sessions.
+- An access token keeps working after its family is revoked, until it expires (15 minutes by default). That
+  is what stateless means; only the refresh is refused.
+
+Not built yet, deliberately waiting on the owner's review:
+
+- An anonymous caller on a secured resource gets **403**, not 401. 401 would tell a client to sign in; it
+  changes the handler's behaviour, so it is the owner's call.
+- Lockout after failed sign-ins, `ILogger` security events (reuse detected, family revoked), and recording a
+  device name, user agent and IP per session.
 - Nothing enforces that a role name in a token has a matching `SecurityBuilder.Role`; a startup check that
   warns about the mismatch is worth adding.
 - Finding worth keeping: a per-execution parameter is **not** reachable from `IQueryExpressionInterceptor`.

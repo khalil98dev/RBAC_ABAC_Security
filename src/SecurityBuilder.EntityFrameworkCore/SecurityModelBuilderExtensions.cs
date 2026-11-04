@@ -10,6 +10,11 @@ public static class SecurityModelBuilderExtensions
     /// Maps Role, ResourcePermission and FieldPermission. Action flags are stored as int.
     /// The unique indexes are the invariants the entities already enforce in memory: one permission
     /// per resource on a role, one permission per field on a resource.
+    ///
+    /// Every key is <c>ValueGeneratedNever</c>: the entities make their own ids in their constructors.
+    /// Left to the convention, EF takes an entity it finds in a navigation with its key already set for
+    /// one that exists, and updates it instead of inserting - which is exactly what replacing a saved
+    /// role's permissions does.
     /// </summary>
     public static ModelBuilder ApplySecurityModel(this ModelBuilder modelBuilder)
     {
@@ -19,6 +24,7 @@ public static class SecurityModelBuilderExtensions
         {
             role.ToTable("Roles");
             role.HasKey(r => r.RoleId);
+            role.Property(r => r.RoleId).ValueGeneratedNever();
 
             role.Property(r => r.RoleName).HasMaxLength(200).IsRequired();
             role.Property(r => r.Description).HasMaxLength(1000).IsRequired();
@@ -40,6 +46,7 @@ public static class SecurityModelBuilderExtensions
         {
             permission.ToTable("ResourcePermissions");
             permission.HasKey(p => p.ResourcePermissionId);
+            permission.Property(p => p.ResourcePermissionId).ValueGeneratedNever();
 
             permission.Property(p => p.Resource).HasMaxLength(200).IsRequired();
             permission.Property(p => p.AllowedActions).HasConversion<int>();
@@ -59,6 +66,7 @@ public static class SecurityModelBuilderExtensions
         {
             field.ToTable("FieldPermissions");
             field.HasKey(f => f.ResourceFieldId);
+            field.Property(f => f.ResourceFieldId).ValueGeneratedNever();
 
             field.Property(f => f.Field).HasMaxLength(200).IsRequired();
             field.Property(f => f.AllowedActions).HasConversion<int>();

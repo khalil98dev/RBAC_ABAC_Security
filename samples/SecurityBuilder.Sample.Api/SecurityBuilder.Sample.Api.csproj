@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- The JWT signing key lives in user-secrets, never in a file that is checked in. -->
+    <UserSecretsId>securitybuilder-sample-api</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.2" />
+    <!-- JwtBearer brings the 8.0.x IdentityModel packages; the identity package uses 8.19.2. Every
+         Microsoft.IdentityModel.* assembly has to be the same version, so this lifts the rest. -->
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.19.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+    <!-- Above the 2.1.11 EF Core 10 brings in, which has advisory GHSA-2m69-gcr7-jv3q. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SecurityBuilder\SecurityBuilder.csproj" />
+    <ProjectReference Include="..\..\src\SecurityBuilder.EntityFrameworkCore\SecurityBuilder.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\SecurityBuilder.AspNetCore\SecurityBuilder.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\SecurityBuilder.Identity\SecurityBuilder.Identity.csproj" />
+  </ItemGroup>
+
+</Project>

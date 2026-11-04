@@ -13,7 +13,9 @@ public static class SecurityBuilderServiceCollectionExtensions
     /// anonymous until <c>UseSecurityBuilder</c> signs them in.
     ///
     /// Also maps <see cref="AccessDeniedException"/> to a 403 ProblemDetails response. That only takes
-    /// effect once the app calls <c>UseExceptionHandler</c>.
+    /// effect once the app calls <c>UseExceptionHandler()</c> - which itself refuses to start unless the
+    /// app also calls <c>AddProblemDetails()</c> or gives it an error path. Neither is done here, so
+    /// adding SecurityBuilder does not change how the rest of the app renders errors.
     /// </summary>
     public static IServiceCollection AddSecurityBuilder(
         this IServiceCollection services,

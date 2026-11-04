@@ -7,3 +7,8 @@
 .vs/
 *.user
 TestResults/
+
+# The sample API creates its SQLite database next to itself.
+*.db
+*.db-shm
+*.db-wal

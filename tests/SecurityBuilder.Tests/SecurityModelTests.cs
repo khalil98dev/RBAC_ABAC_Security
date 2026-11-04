@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SecurityBuilder.Actions;
 using SecurityBuilder.Common;
 using SecurityBuilder.Grants;
+using SecurityBuilder.Permissions;
 using SecurityBuilder.Tests.Aggregates;
 
 namespace SecurityBuilder.Tests;
@@ -115,5 +116,43 @@ public class SecurityModelTests
 
         Assert.False(result.IsValid);
         Assert.Empty(role.ResourcePermissions);
+    }
+
+    // What an admin screen does: load a saved role, replace its grants, save. The new permissions
+    // carry ids they made themselves, so EF must insert them rather than assume they exist.
+    [Fact]
+    public void A_saved_role_s_permissions_can_be_replaced()
+    {
+        using var database = new TestDatabase();
+
+        var sales = TestSecurity.Sales();
+
+        database.AsSystem(db =>
+        {
+            db.Add(sales);
+            return db.SaveChanges();
+        });
+
+        database.AsSystem(db =>
+        {
+            var role = db.Set<Role>().Single(r => r.RoleId == sales.RoleId);
+
+            var result = role.ApplyPermissions(
+            [
+                new PermissionGrant("Order", ResourceActions.Read,
+                    TestSecurity.Fields((nameof(Order.TotalAmmount), FieldsActions.Read)))
+            ], TestSecurity.Registry);
+
+            Assert.True(result.IsValid);
+            return db.SaveChanges();
+        });
+
+        var loaded = database.AsSystem(db => db.Set<Role>().Single(r => r.RoleId == sales.RoleId));
+
+        var order = Assert.Single(loaded.ResourcePermissions);
+
+        Assert.Equal(ResourceActions.Read, order.AllowedActions);
+        Assert.Equal([nameof(Order.TotalAmmount)], order.FieldPermissions.Select(field => field.Field));
+        Assert.Equal(1, database.AsSystem(db => db.Set<FieldPermission>().Count()));
     }
 }

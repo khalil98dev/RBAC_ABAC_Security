@@ -90,6 +90,5 @@ public sealed class RefreshToken
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now;
 
-    private static DateTimeOffset Earliest(DateTimeOffset left, DateTimeOffset right) =>
-        left <= right ? left : right;
+    private static DateTimeOffset Earliest(DateTimeOffset left, DateTimeOffset right) =>left <= right ? left : right;
 }

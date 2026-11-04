@@ -5,6 +5,9 @@
     <Project Path="src/SecurityBuilder.Identity/SecurityBuilder.Identity.csproj" />
     <Project Path="src/SecurityBuilder/SecurityBuilder.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/SecurityBuilder.Sample.Api/SecurityBuilder.Sample.Api.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SecurityBuilder.Tests/SecurityBuilder.Tests.csproj" />
   </Folder>
